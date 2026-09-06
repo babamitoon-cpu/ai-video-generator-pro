@@ -68,23 +68,50 @@ function pickMime(){const types=['video/webm;codecs=vp9','video/webm;codecs=vp8'
 async function renderVideo(){
  if(!project)return alert('Generate a project first.');
  if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream)return alert('Browser ini belum mendukung video recording. Coba Chrome terbaru.');
- const w=project.format==='9:16'?540:960,h=project.format==='9:16'?960:540,canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');
- const stream=canvas.captureStream(30),mime=pickMime();let rec;try{rec=new MediaRecorder(stream,mime?{mimeType:mime}:{})}catch(e){alert('MediaRecorder tidak tersedia: '+e.message);return;}
- const chunks=[];const sceneSeconds=project.mode==='YouTube Shorts'?Math.min(6,Math.max(2,60/project.scenes.length)):Math.min(8,Math.max(2,600/project.scenes.length));
+ const w=project.format==='9:16'?540:960,h=project.format==='9:16'?960:540;
+ const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+ const ctx=canvas.getContext('2d',{alpha:false});
+ const stream=canvas.captureStream(30),mime=pickMime();let rec;
+ try{rec=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:2500000}:{videoBitsPerSecond:2500000});}
+ catch(e){alert('MediaRecorder tidak tersedia: '+e.message);stream.getTracks().forEach(t=>t.stop());return;}
+ const chunks=[];
+ const sceneSeconds=project.mode==='YouTube Shorts'?Math.min(6,Math.max(2,60/project.scenes.length)):Math.min(8,Math.max(2,600/project.scenes.length));
  $('#status').textContent='Merender video gratis di browser... jangan tutup tab';
- rec.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data);};
- rec.onstop=()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks,{type:rec.mimeType||'video/webm'});save('shorts-factory-video.webm',blob,blob.type);$('#status').textContent='✅ Video selesai — WebM sudah diunduh. Tidak ada biaya render.';};
- rec.start(250);
+ rec.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data);};
+ const stopped=new Promise(resolve=>{rec.onstop=resolve;rec.onerror=e=>resolve(e);});
+ rec.start(1000);
+ // Give MediaRecorder time to initialize and capture the first keyframe.
+ await new Promise(r=>setTimeout(r,300));
  for(let i=0;i<project.scenes.length;i++){
    const sc=project.scenes[i],img=await imageForScene(sc),start=performance.now();
-   await new Promise(resolve=>{function frame(now){const p=Math.min(1,(now-start)/(sceneSeconds*1000));ctx.fillStyle='#111827';ctx.fillRect(0,0,w,h);
-     if(img){const scale=Math.max(w/img.width,h/img.height)*(1+p*.12),dw=img.width*scale,dh=img.height*scale;ctx.drawImage(img,(w-dw)/2,(h-dh)/2,dw,dh);}else{ctx.fillStyle='#1f2937';ctx.fillRect(0,0,w,h);ctx.fillStyle='#fff';ctx.font=`bold ${Math.max(24,w/18)}px Arial`;ctx.textAlign='center';ctx.fillText('SCENE '+String(i+1).padStart(2,'0'),w/2,h*.35);ctx.font=`${Math.max(18,w/28)}px Arial`;wrap(ctx,sc.title,w/2,h*.48,w*.8,Math.max(24,w/24));}
-     ctx.fillStyle='rgba(0,0,0,.68)';ctx.fillRect(0,h*.73,w,h*.27);ctx.fillStyle='white';ctx.font=`${Math.max(16,w/32)}px Arial`;ctx.textAlign='center';wrap(ctx,sc.narration,w/2,h*.79,w*.86,Math.max(22,w/30));ctx.fillStyle='#fbbf24';ctx.font=`bold ${Math.max(14,w/38)}px Arial`;ctx.fillText(`${i+1}/${project.scenes.length}`,w/2,h*.965);
-     if(p<1)requestAnimationFrame(frame);else resolve();}requestAnimationFrame(frame);});
+   await new Promise(resolve=>{
+     function frame(now){
+       const p=Math.min(1,(now-start)/(sceneSeconds*1000));
+       ctx.fillStyle='#111827';ctx.fillRect(0,0,w,h);
+       if(img){const scale=Math.max(w/img.width,h/img.height)*(1+p*.12),dw=img.width*scale,dh=img.height*scale;ctx.drawImage(img,(w-dw)/2,(h-dh)/2,dw,dh);}
+       else{ctx.fillStyle='#1f2937';ctx.fillRect(0,0,w,h);ctx.fillStyle='#fff';ctx.font=`bold ${Math.max(24,w/18)}px Arial`;ctx.textAlign='center';ctx.fillText('SCENE '+String(i+1).padStart(2,'0'),w/2,h*.35);ctx.font=`${Math.max(18,w/28)}px Arial`;wrap(ctx,sc.title,w/2,h*.48,w*.8,Math.max(24,w/24));}
+       ctx.fillStyle='rgba(0,0,0,.68)';ctx.fillRect(0,h*.73,w,h*.27);ctx.fillStyle='white';ctx.font=`${Math.max(16,w/32)}px Arial`;ctx.textAlign='center';wrap(ctx,sc.narration,w/2,h*.79,w*.86,Math.max(22,w/30));ctx.fillStyle='#fbbf24';ctx.font=`bold ${Math.max(14,w/38)}px Arial`;ctx.fillText(`${i+1}/${project.scenes.length}`,w/2,h*.965);
+       if(p<1)requestAnimationFrame(frame);else resolve();
+     }
+     requestAnimationFrame(frame);
+   });
  }
- rec.stop();
+ // Flush the final encoded chunk before stopping, then wait for onstop.
+ if(rec.state==='recording'){
+   try{rec.requestData();}catch(e){}
+   await new Promise(r=>setTimeout(r,250));
+   rec.stop();
+ }
+ const stopResult=await stopped;
+ stream.getTracks().forEach(t=>t.stop());
+ if(stopResult instanceof Event && stopResult.type==='error'){throw new Error('Video recorder gagal. Coba Chrome terbaru.');}
+ await new Promise(r=>setTimeout(r,250));
+ const blob=new Blob(chunks,{type:rec.mimeType||'video/webm'});
+ if(!blob.size){throw new Error('Video kosong. Silakan coba lagi di Chrome.');}
+ save('baba-ai-generator-video-pro.webm',blob,blob.type);
+ $('#status').textContent=`✅ Video selesai — ${(blob.size/1024/1024).toFixed(1)} MB WebM sudah diunduh.`;
 }
-$('#renderVideo').onclick=renderVideo;
+$('#renderVideo')
 
 const saveProjectBtn=$('#saveProject'),loadProjectBtn=$('#loadProject'),projectFile=$('#projectFile');
 saveProjectBtn?.addEventListener('click',()=>{if(!project)return alert('Generate a story first.');localStorage.setItem('shortsFactoryProject',JSON.stringify(project));$('#status').textContent='Project saved locally in this browser.';});
