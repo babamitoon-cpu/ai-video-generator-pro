@@ -49,7 +49,31 @@ document.querySelectorAll('.mode').forEach(b=>b.onclick=()=>{document.querySelec
 
 $('#generate').onclick=()=>{project=makeProject();showProject();const t=i18n[lang];$('#status').textContent=`${t.ready}: ${project.scenes.length} ${t.scenes} • ${project.format}`;window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});};
 $('#generateAI').onclick=async()=>{try{await generateWithAI();window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});}catch(e){$('#status').textContent='❌ '+e.message;alert(e.message);}};
-$('#autoVideo')?.addEventListener('click',async()=>{try{$('#status').textContent='Membuat draft gratis di browser...';project=makeProject();showProject();addAutoVisuals();await new Promise(r=>setTimeout(r,150));renderVideo();}catch(e){$('#status').textContent='Gagal membuat video: '+e.message;alert(e.message);}});
+function findButtonByText(text){
+  return [...document.querySelectorAll('button')].find(b=>
+    (b.textContent||'').replace(/\\s+/g,' ').trim().toLowerCase().includes(text.toLowerCase())
+  );
+}
+const autoVideoBtn=$('#autoVideo')||findButtonByText('FREE AUTO CREATE VIDEO')||findButtonByText('BUAT VIDEO OTOMATIS');
+autoVideoBtn?.addEventListener('click',async()=>{
+  try{
+    if(autoVideoBtn){autoVideoBtn.disabled=true;autoVideoBtn.dataset.oldText=autoVideoBtn.textContent;autoVideoBtn.textContent='⏳ MEMPROSES...';}
+    $('#status').textContent='⏳ Menyiapkan cerita... 0%';
+    project=makeProject();
+    showProject();
+    addAutoVisuals();
+    await new Promise(r=>setTimeout(r,150));
+    await renderVideo();
+  }catch(e){
+    $('#status').textContent='❌ Gagal membuat video: '+e.message;
+    alert(e.message);
+  }finally{
+    if(autoVideoBtn){
+      autoVideoBtn.disabled=false;
+      autoVideoBtn.textContent=autoVideoBtn.dataset.oldText||'🎉 FREE AUTO CREATE VIDEO';
+    }
+  }
+});
 
 function render(){if(!project)return;const t=i18n[lang];$('#scenesList').innerHTML=project.scenes.map((s,i)=>`<article class="card scene"><div class="scenehead"><b>SCENE ${String(i+1).padStart(2,'0')}</b><label class="upload">＋ ADD IMAGE<input type="file" accept="image/*" data-i="${i}"></label></div><h3>${esc(s.title)}</h3><p>🎙 ${esc(s.narration)}</p><div class="prompt"><small>IMAGE PROMPT</small><p>${esc(s.imagePrompt)}</p><button data-copy="${i}">${t.copy}</button></div><div id="preview${i}" class="preview">${s.imageData?`<img src="${s.imageData}">`:t.noImage}</div></article>`).join('');
  document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>navigator.clipboard?.writeText(project.scenes[b.dataset.copy].imagePrompt));
@@ -87,6 +111,8 @@ async function renderVideo(){
    await new Promise(resolve=>{
      function frame(now){
        const p=Math.min(1,(now-start)/(sceneSeconds*1000));
+        const overall=((i+p)/totalScenes)*100;
+        $('#status').textContent=`🎬 Merender scene ${i+1}/${totalScenes} — ${Math.floor(overall)}%`;
        ctx.fillStyle='#111827';ctx.fillRect(0,0,w,h);
        if(img){const scale=Math.max(w/img.width,h/img.height)*(1+p*.12),dw=img.width*scale,dh=img.height*scale;ctx.drawImage(img,(w-dw)/2,(h-dh)/2,dw,dh);}
        else{ctx.fillStyle='#1f2937';ctx.fillRect(0,0,w,h);ctx.fillStyle='#fff';ctx.font=`bold ${Math.max(24,w/18)}px Arial`;ctx.textAlign='center';ctx.fillText('SCENE '+String(i+1).padStart(2,'0'),w/2,h*.35);ctx.font=`${Math.max(18,w/28)}px Arial`;wrap(ctx,sc.title,w/2,h*.48,w*.8,Math.max(24,w/24));}
@@ -109,9 +135,20 @@ async function renderVideo(){
  const blob=new Blob(chunks,{type:rec.mimeType||'video/webm'});
  if(!blob.size){throw new Error('Video kosong. Silakan coba lagi di Chrome.');}
  save('baba-ai-generator-video-pro.webm',blob,blob.type);
- $('#status').textContent=`✅ Video selesai — ${(blob.size/1024/1024).toFixed(1)} MB WebM sudah diunduh.`;
+ $('#status').textContent=`✅ Video selesai — 100% — ${(blob.size/1024/1024).toFixed(1)} MB WebM sudah diunduh.`;
 }
-$('#renderVideo')
+const renderVideoBtn=$('#renderVideo')||findButtonByText('RENDER VIDEO');
+renderVideoBtn?.addEventListener('click',async()=>{
+  try{
+    renderVideoBtn.disabled=true;
+    await renderVideo();
+  }catch(e){
+    $('#status').textContent='❌ Gagal render: '+e.message;
+    alert(e.message);
+  }finally{
+    renderVideoBtn.disabled=false;
+  }
+});
 
 const saveProjectBtn=$('#saveProject'),loadProjectBtn=$('#loadProject'),projectFile=$('#projectFile');
 saveProjectBtn?.addEventListener('click',()=>{if(!project)return alert('Generate a story first.');localStorage.setItem('shortsFactoryProject',JSON.stringify(project));$('#status').textContent='Project saved locally in this browser.';});
