@@ -1,339 +1,219 @@
-/* BABA AI GENERATOR VIDEO PRO - V7 MP4 */
-(() => {
-  "use strict";
+const $ = s => document.querySelector(s);
+let scenes = [];
+let topic = "";
 
-  const $ = (s) => document.querySelector(s);
-  let mode = "shorts";
-  let project = null;
-  let recorder = null;
-  let chunks = [];
+function backend(){
+  return ($("#apiBase").value || "").trim().replace(/\/+$/,"");
+}
+function setStatus(msg){ $("#status").textContent = msg; }
 
-  const setStatus = (text) => {
-    const el = $("#status");
-    if (el) el.textContent = text || "";
-  };
-
-  const clean = (v, fallback = "") => String(v ?? fallback).trim();
-
-  function makeProject() {
-    const topic = clean($("#topic")?.value, "Untitled Video");
-    const count = Math.max(1, parseInt($("#sceneCount")?.value || "10", 10));
-    const durationText = clean($("#duration")?.value, "60 sec");
-    const style = clean($("#style")?.value, "Analyst doodle");
-    const duration = parseDuration(durationText);
-    const secondsPerScene = Math.max(1, duration / count);
-
-    const scenes = Array.from({ length: count }, (_, i) => ({
-      id: i + 1,
-      title: `Scene ${i + 1}`,
-      narration: i === 0
-        ? `Let's explore ${topic}.`
-        : `This is an important part of ${topic}.`,
-      visual: `${style} visual about ${topic}, scene ${i + 1}`
-    }));
-
+function localScenes(subject, n){
+  const beats = [
+    ["Hook", `Something unexpected is happening: ${subject}.`],
+    ["Setup", `We follow the main subject as the situation begins: ${subject}.`],
+    ["First action", `The main action becomes clear while the subject reacts naturally.`],
+    ["Close-up", `A closer moment reveals an important detail of the story.`],
+    ["Challenge", `A small obstacle changes what happens next.`],
+    ["Reaction", `The main subject reacts and the story moves forward.`],
+    ["Turning point", `The situation reaches its most interesting moment.`],
+    ["Payoff", `The result of the action becomes visible.`],
+    ["Resolution", `The tension settles and the story reaches a satisfying ending.`],
+    ["Final thought", `A memorable final image closes the story.`]
+  ];
+  return Array.from({length:n},(_,i)=>{
+    const b=beats[i%beats.length];
     return {
-      version: "7.0",
-      title: topic,
-      description: `A ${mode === "shorts" ? "YouTube Shorts" : "YouTube long video"} about ${topic}.`,
-      tags: [topic, style, "AI video", "YouTube"],
-      mode,
-      duration,
-      durationText,
-      style,
-      scenes,
-      secondsPerScene
+      number:i+1,title:b[0],narration:b[1],
+      imagePrompt:`${subject}. Scene ${i+1}: ${b[1]} Show the exact subject clearly, with the main character and environment matching the other scenes. ${$("#style").value}. Vertical 9:16 composition, cinematic framing, natural lighting, no text, no watermark.`
     };
+  });
+}
+
+async function generateStory(){
+  topic=$("#topic").value.trim();
+  if(!topic){ setStatus("Masukkan VIDEO IDEA dulu."); return; }
+  const n=Number($("#sceneCount").value);
+  const base=backend();
+  setStatus("Membuat 10 scene yang benar-benar mengikuti ide...");
+  try{
+    if(!base) throw new Error("NO_BACKEND");
+    const r=await fetch(base+"/story",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({topic,sceneCount:n,style:$("#style").value})
+    });
+    if(!r.ok) throw new Error(await r.text());
+    const data=await r.json();
+    scenes=(data.scenes||[]).slice(0,n);
+    if(!scenes.length) throw new Error("Backend tidak mengembalikan scene.");
+  }catch(e){
+    scenes=localScenes(topic,n);
+    setStatus("Story lokal dibuat. Isi AI Backend URL untuk story AI + gambar AI nyata.");
   }
+  renderScenes();
+  if(base) setStatus(`${scenes.length} scene siap. Klik GENERATE ALL REAL IMAGES.`);
+}
 
-  function parseDuration(text) {
-    const n = parseFloat(text) || 60;
-    if (/min/i.test(text)) return n * 60;
-    return n;
-  }
-
-  function renderProject() {
-    if (!project) return;
-    $("#output").hidden = false;
-    $("#title").textContent = project.title;
-    $("#desc").textContent = project.description;
-    $("#tags").textContent = project.tags.map(x => `#${x.replace(/\s+/g, "")}`).join(" ");
-
-    const list = $("#scenesList");
-    list.innerHTML = "";
-    project.scenes.forEach((s) => {
-      const card = document.createElement("div");
-      card.className = "card";
-      card.innerHTML = `
-        <div class="top">
-          <div>
-            <small>SCENE ${s.id}</small>
-            <h3>${escapeHtml(s.title)}</h3>
+function renderScenes(){
+  const box=$("#scenesList");
+  box.innerHTML="";
+  scenes.forEach((s,i)=>{
+    const el=document.createElement("article");
+    el.className="scene";
+    el.innerHTML=`
+      <div class="scene-head">
+        <h3>SCENE ${String(i+1).padStart(2,"0")} — ${escapeHtml(s.title||"Scene")}</h3>
+        <span class="badge" id="badge-${i}">${s.imageData?"IMAGE READY":"WAITING"}</span>
+      </div>
+      <div class="scene-grid">
+        <div>
+          <img id="img-${i}" src="${s.imageData||""}" alt="Scene ${i+1}" ${s.imageData?"":"style='display:none'"} />
+          <div class="scene-actions">
+            <button class="secondary addImage" data-i="${i}">＋ ADD IMAGE</button>
+            <button class="primary genImage" data-i="${i}">🖼️ GENERATE IMAGE</button>
           </div>
+          <input class="hidden fileInput" id="file-${i}" type="file" accept="image/*">
         </div>
-        <p><strong>Narration:</strong> ${escapeHtml(s.narration)}</p>
-        <p class="muted"><strong>Visual:</strong> ${escapeHtml(s.visual)}</p>
-      `;
-      list.appendChild(card);
+        <div class="scene-meta">
+          <p><b>Narration</b><textarea data-field="narration" data-i="${i}">${escapeHtml(s.narration||"")}</textarea></p>
+          <p><b>Image Prompt</b><textarea data-field="imagePrompt" data-i="${i}">${escapeHtml(s.imagePrompt||"")}</textarea></p>
+        </div>
+      </div>`;
+    box.appendChild(el);
+  });
+  box.querySelectorAll(".genImage").forEach(b=>b.onclick=()=>generateImage(Number(b.dataset.i)));
+  box.querySelectorAll(".addImage").forEach(b=>b.onclick=()=>$("#file-"+b.dataset.i).click());
+  box.querySelectorAll(".fileInput").forEach(inp=>inp.onchange=e=>loadLocalImage(Number(inp.id.split("-")[1]),e.target.files[0]));
+  box.querySelectorAll("textarea[data-field]").forEach(t=>t.oninput=()=>{
+    scenes[Number(t.dataset.i)][t.dataset.field]=t.value;
+  });
+}
+
+function escapeHtml(v){
+  return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function loadLocalImage(i,file){
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    scenes[i].imageData=reader.result;
+    const img=$("#img-"+i); img.src=reader.result; img.style.display="block";
+    $("#badge-"+i).textContent="IMAGE READY";
+  };
+  reader.readAsDataURL(file);
+}
+
+async function generateImage(i){
+  const base=backend();
+  if(!base){ setStatus("Isi AI Backend URL dulu."); return; }
+  setStatus(`Generating real image untuk Scene ${i+1}...`);
+  try{
+    const r=await fetch(base+"/image",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        prompt: scenes[i].imagePrompt,
+        style:$("#style").value,
+        sceneIndex:i+1
+      })
     });
+    if(!r.ok) throw new Error(await r.text());
+    const data=await r.json();
+    if(!data.image) throw new Error("Tidak ada image dari backend.");
+    scenes[i].imageData=data.image;
+    const img=$("#img-"+i); img.src=data.image; img.style.display="block";
+    $("#badge-"+i).textContent="REAL IMAGE READY";
+    setStatus(`Scene ${i+1} selesai.`);
+  }catch(e){
+    console.error(e);
+    setStatus(`Gagal Scene ${i+1}: ${e.message}`);
   }
+}
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
-    }[c]));
+async function generateAll(){
+  if(!scenes.length){ await generateStory(); }
+  if(!scenes.length) return;
+  for(let i=0;i<scenes.length;i++){
+    if(!scenes[i].imageData) await generateImage(i);
   }
+  setStatus("Semua scene selesai. Sekarang klik CREATE MP4.");
+}
 
-  function drawScene(ctx, canvas, scene, index, total) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    const g = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    g.addColorStop(0, "#f7f0df");
-    g.addColorStop(1, "#d8c3a5");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = "rgba(255,255,255,.65)";
-    ctx.beginPath();
-    ctx.arc(canvas.width * .78, canvas.height * .20, canvas.width * .12, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "#3d3027";
-    ctx.textAlign = "center";
-    ctx.font = `bold ${Math.max(28, canvas.width * .045)}px sans-serif`;
-    wrapText(ctx, scene.title, canvas.width / 2, canvas.height * .35, canvas.width * .8, canvas.width * .055);
-
-    ctx.font = `${Math.max(18, canvas.width * .026)}px sans-serif`;
-    wrapText(ctx, scene.narration, canvas.width / 2, canvas.height * .52, canvas.width * .78, canvas.width * .038);
-
-    ctx.font = `${Math.max(14, canvas.width * .018)}px sans-serif`;
-    ctx.fillStyle = "#6f5b4c";
-    ctx.fillText(`BABA AI GENERATOR • ${index + 1}/${total}`, canvas.width / 2, canvas.height * .91);
+async function createMp4(){
+  const ready=scenes.filter(s=>s.imageData);
+  if(!ready.length){ setStatus("Generate atau Add Image minimal 1 scene."); return; }
+  setStatus("Membuat video MP4 dari gambar scene...");
+  try{
+    const blob=await renderWebm(ready,Number($("#duration").value));
+    const mp4=await convertToMp4(blob);
+    const url=URL.createObjectURL(mp4);
+    const a=document.createElement("a");
+    a.href=url;a.download="baba-ai-generator-video-pro.mp4";a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    setStatus("MP4 selesai dibuat dan siap disimpan.");
+  }catch(e){
+    console.error(e);
+    setStatus("MP4 gagal dibuat: "+e.message);
   }
+}
 
-  function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-    const words = String(text).split(/\s+/);
-    let line = "";
-    const lines = [];
-    for (const word of words) {
-      const test = line ? line + " " + word : word;
-      if (ctx.measureText(test).width > maxWidth && line) {
-        lines.push(line);
-        line = word;
-      } else line = test;
-    }
-    if (line) lines.push(line);
-    lines.slice(0, 5).forEach((l, i) => ctx.fillText(l, x, y + i * lineHeight));
-  }
-
-  async function recordVideo() {
-    if (!project) project = makeProject();
-
-    const isShorts = project.mode === "shorts";
-    const canvas = document.createElement("canvas");
-    canvas.width = isShorts ? 720 : 1280;
-    canvas.height = isShorts ? 1280 : 720;
-
-    const stream = canvas.captureStream(30);
-
-    const mimeCandidates = [
-      "video/webm;codecs=vp9",
-      "video/webm;codecs=vp8",
-      "video/webm"
-    ];
-    const mime = mimeCandidates.find(x => MediaRecorder.isTypeSupported(x));
-    if (!mime) throw new Error("Browser tidak mendukung perekaman video.");
-
-    chunks = [];
-    recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5000000 });
-
-    const stopped = new Promise(resolve => {
-      recorder.onstop = () => resolve(new Blob(chunks, { type: mime }));
-    });
-    recorder.ondataavailable = e => {
-      if (e.data && e.data.size) chunks.push(e.data);
-    };
-
-    recorder.start(250);
-
-    const ctx = canvas.getContext("2d");
-    const sceneMs = project.duration * 1000 / project.scenes.length;
-    const start = performance.now();
-
-    await new Promise(resolve => {
-      function frame(now) {
-        const elapsed = now - start;
-        const idx = Math.min(project.scenes.length - 1, Math.floor(elapsed / sceneMs));
-        drawScene(ctx, canvas, project.scenes[idx], idx, project.scenes.length);
-        if (elapsed >= project.duration * 1000) resolve();
-        else requestAnimationFrame(frame);
+function renderWebm(list,seconds){
+  return new Promise(async(resolve,reject)=>{
+    const canvas=document.createElement("canvas");
+    canvas.width=720;canvas.height=1280;
+    const ctx=canvas.getContext("2d");
+    const stream=canvas.captureStream(30);
+    const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9")?"video/webm;codecs=vp9":"video/webm";
+    const rec=new MediaRecorder(stream,{mimeType:mime});
+    const chunks=[];
+    rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+    rec.onerror=e=>reject(e.error||new Error("Recorder error"));
+    rec.onstop=()=>resolve(new Blob(chunks,{type:"video/webm"}));
+    rec.start();
+    const frameMs=1000/30;
+    for(const s of list){
+      const img=await loadImg(s.imageData);
+      const start=performance.now(), total=seconds*1000;
+      while(performance.now()-start<total){
+        const p=Math.min(1,(performance.now()-start)/total);
+        ctx.fillStyle="#000";ctx.fillRect(0,0,720,1280);
+        const scale=1+0.06*p;
+        const iw=img.width*scale, ih=img.height*scale;
+        const sc=Math.max(720/img.width,1280/img.height)*scale;
+        const dw=img.width*sc, dh=img.height*sc;
+        const x=(720-dw)/2 - p*8, y=(1280-dh)/2;
+        ctx.drawImage(img,x,y,dw,dh);
+        await new Promise(r=>setTimeout(r,frameMs));
       }
-      requestAnimationFrame(frame);
-    });
-
-    recorder.stop();
-    stream.getTracks().forEach(t => t.stop());
-    return stopped;
-  }
-
-  async function convertToMp4(webmBlob) {
-    setStatus("Mengubah WebM → MP4... jangan tutup halaman.");
-
-    if (!window.FFmpegWASM) {
-      await loadScript("https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js");
     }
+    rec.stop();
+  });
+}
 
-    if (!window.FFmpegWASM) {
-      throw new Error("FFmpeg belum berhasil dimuat. Periksa koneksi internet.");
-    }
+function loadImg(src){
+  return new Promise((resolve,reject)=>{
+    const i=new Image();
+    i.onload=()=>resolve(i);i.onerror=reject;i.src=src;
+  });
+}
 
-    const { FFmpeg } = window.FFmpegWASM;
-    const { fetchFile, toBlobURL } = window.FFmpegUtil || {};
-    if (!fetchFile || !toBlobURL) {
-      await loadScript("https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js");
-    }
+async function convertToMp4(webm){
+  setStatus("Konversi WebM → MP4... pertama kali bisa agak lama di HP.");
+  const {FFmpeg,fetchFile}=await import("https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/+esm");
+  const ff=new FFmpeg();
+  await ff.load({
+    coreURL:"https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.js",
+    wasmURL:"https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.wasm"
+  });
+  await ff.writeFile("input.webm",await fetchFile(webm));
+  await ff.exec(["-i","input.webm","-c:v","libx264","-pix_fmt","yuv420p","-movflags","+faststart","output.mp4"]);
+  const data=await ff.readFile("output.mp4");
+  return new Blob([data.buffer],{type:"video/mp4"});
+}
 
-    const util = window.FFmpegUtil;
-    if (!util) throw new Error("FFmpeg utility gagal dimuat.");
-
-    const ffmpeg = new FFmpeg();
-    const base = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
-    await ffmpeg.load({
-      coreURL: await util.toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
-      wasmURL: await util.toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm")
-    });
-
-    await ffmpeg.writeFile("input.webm", await util.fetchFile(webmBlob));
-    await ffmpeg.exec([
-      "-i", "input.webm",
-      "-c:v", "libx264",
-      "-pix_fmt", "yuv420p",
-      "-movflags", "+faststart",
-      "-preset", "veryfast",
-      "output.mp4"
-    ]);
-
-    const data = await ffmpeg.readFile("output.mp4");
-    return new Blob([data.buffer], { type: "video/mp4" });
-  }
-
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const existing = document.querySelector(`script[src="${src}"]`);
-      if (existing) return existing.addEventListener("load", resolve, { once: true });
-      const s = document.createElement("script");
-      s.src = src;
-      s.onload = resolve;
-      s.onerror = () => reject(new Error("Gagal memuat " + src));
-      document.head.appendChild(s);
-    });
-  }
-
-  function downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 3000);
-  }
-
-  async function autoCreateVideo() {
-    try {
-      const btn = $("#autoVideo");
-      if (btn) btn.disabled = true;
-
-      project = makeProject();
-      renderProject();
-      setStatus("Membuat video...");
-      const webm = await recordVideo();
-      const mp4 = await convertToMp4(webm);
-
-      downloadBlob(mp4, "baba-ai-generator-video-pro.mp4");
-      setStatus("✅ MP4 selesai dan siap didownload.");
-    } catch (err) {
-      console.error(err);
-      setStatus("❌ Gagal membuat MP4: " + (err?.message || err));
-    } finally {
-      const btn = $("#autoVideo");
-      if (btn) btn.disabled = false;
-    }
-  }
-
-  function bind() {
-    document.querySelectorAll(".mode").forEach(btn => {
-      btn.addEventListener("click", () => {
-        document.querySelectorAll(".mode").forEach(x => x.classList.remove("selected"));
-        btn.classList.add("selected");
-        mode = btn.dataset.mode || "shorts";
-      });
-    });
-
-    $("#generate")?.addEventListener("click", () => {
-      project = makeProject();
-      renderProject();
-      setStatus("✅ Story berhasil dibuat.");
-    });
-
-    $("#autoVideo")?.addEventListener("click", autoCreateVideo);
-
-    $("#downloadTxt")?.addEventListener("click", () => {
-      if (!project) return;
-      const text = [
-        project.title,
-        "",
-        project.description,
-        "",
-        ...project.scenes.map(s => `SCENE ${s.id}\n${s.title}\n${s.narration}\nVisual: ${s.visual}\n`)
-      ].join("\n");
-      downloadBlob(new Blob([text], {type:"text/plain"}), "baba-ai-project.txt");
-    });
-
-    $("#export")?.addEventListener("click", () => {
-      if (!project) project = makeProject();
-      downloadBlob(
-        new Blob([JSON.stringify(project, null, 2)], {type:"application/json"}),
-        "baba-ai-project.json"
-      );
-    });
-
-    $("#saveProject")?.addEventListener("click", () => {
-      localStorage.setItem("baba-ai-project-v7", JSON.stringify(project || makeProject()));
-      setStatus("✅ Project tersimpan di perangkat.");
-    });
-
-    $("#loadProject")?.addEventListener("click", () => $("#projectFile")?.click());
-
-    $("#projectFile")?.addEventListener("change", async e => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      try {
-        project = JSON.parse(await file.text());
-        renderProject();
-        setStatus("✅ Project berhasil dimuat.");
-      } catch {
-        setStatus("❌ File project tidak valid.");
-      }
-    });
-
-    $("#speak")?.addEventListener("click", () => {
-      if (!project) project = makeProject();
-      speechSynthesis.cancel();
-      speechSynthesis.speak(new SpeechSynthesisUtterance(
-        project.scenes.map(s => s.narration).join(" ")
-      ));
-    });
-
-    $("#stop")?.addEventListener("click", () => speechSynthesis.cancel());
-
-    console.log("BABA AI GENERATOR V7 MP4 loaded.");
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bind);
-  } else {
-    bind();
-  }
-})();
+$("#generate").onclick=generateStory;
+$("#generateAll").onclick=generateAll;
+$("#createMp4").onclick=createMp4;
+$("#clearAll").onclick=()=>{
+  scenes=[];topic="";$("#topic").value="";$("#scenesList").innerHTML="";
+  setStatus("Reset selesai.");
+};
