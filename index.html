@@ -38,6 +38,8 @@ button{border:0;border-radius:12px;padding:12px 15px;font-weight:800;cursor:poin
 .social-footer a{color:#fff;text-decoration:none;background:#2a2a2a;padding:8px 10px;border-radius:9px;font-size:12px}
 .small{font-size:12px;color:#666}
 .hidden{display:none!important}
+.steps-guide{background:#fff8e1;border:1px solid #f0dfa0;border-radius:12px;padding:12px 14px;margin-top:14px;font-size:13px;line-height:1.5}
+.steps-guide p{margin:4px 0}
 @media(max-width:720px){
  .row{grid-template-columns:1fr}
  .scene-grid{grid-template-columns:1fr}
@@ -93,10 +95,15 @@ button{border:0;border-radius:12px;padding:12px 15px;font-weight:800;cursor:poin
     </div>
   </div>
 
+  <div class="steps-guide">
+    <p><b>📋 Cara pakai (urut sesuai nomor):</b></p>
+    <p>① Isi <b>VIDEO IDEA</b> di atas → ② Klik <b>GENERATE STORY</b> → ③ Klik <b>GENERATE ALL REAL IMAGES</b> → ④ Klik <b>CREATE MP4</b></p>
+  </div>
+
   <div class="actions">
-    <button class="primary" id="generate">✨ GENERATE STORY</button>
-    <button class="secondary" id="generateAll">🖼️ GENERATE ALL REAL IMAGES</button>
-    <button class="primary" id="createMp4">🎞️ CREATE MP4</button>
+    <button class="primary" id="generate">✨ 1) GENERATE STORY</button>
+    <button class="secondary" id="generateAll">🖼️ 2) GENERATE ALL REAL IMAGES</button>
+    <button class="primary" id="createMp4">🎞️ 3) CREATE MP4</button>
     <button class="secondary" id="clearAll">RESET</button>
   </div>
   <div class="status" id="status">Ready. Masukkan ide video.</div>
