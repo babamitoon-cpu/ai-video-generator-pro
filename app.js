@@ -170,7 +170,10 @@ function renderWebm(list,seconds){
     rec.onstop=()=>resolve(new Blob(chunks,{type:"video/webm"}));
     rec.start();
     const frameMs=1000/30;
+    let sceneNum=0;
     for(const s of list){
+      sceneNum++;
+      setStatus(`Merender video: scene ${sceneNum}/${list.length}...`);
       const img=await loadImg(s.imageData);
       const start=performance.now(), total=seconds*1000;
       while(performance.now()-start<total){
@@ -191,8 +194,12 @@ function renderWebm(list,seconds){
 
 function loadImg(src){
   return new Promise((resolve,reject)=>{
+    if(!src){ reject(new Error("Scene ini tidak punya gambar (imageData kosong).")); return; }
     const i=new Image();
-    i.onload=()=>resolve(i);i.onerror=reject;i.src=src;
+    const timer=setTimeout(()=>reject(new Error("Timeout: gambar gagal dimuat dalam 15 detik.")),15000);
+    i.onload=()=>{ clearTimeout(timer); resolve(i); };
+    i.onerror=()=>{ clearTimeout(timer); reject(new Error("Gambar rusak/gagal dimuat.")); };
+    i.src=src;
   });
 }
 
@@ -200,10 +207,14 @@ async function convertToMp4(webm){
   setStatus("Konversi WebM → MP4... pertama kali bisa agak lama di HP.");
   const {FFmpeg,fetchFile}=await import("https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/+esm");
   const ff=new FFmpeg();
-  await ff.load({
+  const withTimeout=(p,ms,label)=>Promise.race([
+    p,
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error(`Timeout: ${label} lebih dari ${ms/1000} detik. Cek koneksi internet.`)),ms))
+  ]);
+  await withTimeout(ff.load({
     coreURL:"https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.js",
     wasmURL:"https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.wasm"
-  });
+  }),90000,"download FFmpeg engine");
   await ff.writeFile("input.webm",await fetchFile(webm));
   await ff.exec(["-i","input.webm","-c:v","libx264","-pix_fmt","yuv420p","-movflags","+faststart","output.mp4"]);
   const data=await ff.readFile("output.mp4");
