@@ -113,7 +113,8 @@ async function generateImage(i){
       body:JSON.stringify({
         prompt: scenes[i].imagePrompt,
         style:$("#style").value,
-        sceneIndex:i+1
+        sceneIndex:i+1,
+        topic: topic
       })
     });
     if(!r.ok) throw new Error(await r.text());
@@ -206,15 +207,18 @@ function loadImg(src){
 async function convertToMp4(webm){
   setStatus("Konversi WebM → MP4... pertama kali bisa agak lama di HP.");
   const {FFmpeg,fetchFile}=await import("https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/+esm");
+  const {toBlobURL}=await import("https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/+esm");
   const ff=new FFmpeg();
   const withTimeout=(p,ms,label)=>Promise.race([
     p,
     new Promise((_,rej)=>setTimeout(()=>rej(new Error(`Timeout: ${label} lebih dari ${ms/1000} detik. Cek koneksi internet.`)),ms))
   ]);
-  await withTimeout(ff.load({
-    coreURL:"https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.js",
-    wasmURL:"https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.wasm"
-  }),90000,"download FFmpeg engine");
+  const baseURL="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+  // Browser menolak Worker langsung dari CDN luar (cross-origin).
+  // Solusinya: unduh dulu jadi blob lokal, baru dipakai sebagai Worker.
+  const coreURL=await withTimeout(toBlobURL(`${baseURL}/ffmpeg-core.js`,"text/javascript"),90000,"download FFmpeg core");
+  const wasmURL=await withTimeout(toBlobURL(`${baseURL}/ffmpeg-core.wasm`,"application/wasm"),90000,"download FFmpeg wasm");
+  await withTimeout(ff.load({ coreURL, wasmURL }),90000,"memuat FFmpeg engine");
   await ff.writeFile("input.webm",await fetchFile(webm));
   await ff.exec(["-i","input.webm","-c:v","libx264","-pix_fmt","yuv420p","-movflags","+faststart","output.mp4"]);
   const data=await ff.readFile("output.mp4");
