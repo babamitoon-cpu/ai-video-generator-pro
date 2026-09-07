@@ -127,16 +127,26 @@ async function generateImage(i){
   }catch(e){
     console.error(e);
     setStatus(`Gagal Scene ${i+1}: ${e.message}`);
+    const badge=$("#badge-"+i);
+    if(badge) badge.textContent="GAGAL — coba lagi";
   }
 }
 
 async function generateAll(){
   if(!scenes.length){ await generateStory(); }
   if(!scenes.length) return;
+  let failed=0;
   for(let i=0;i<scenes.length;i++){
-    if(!scenes[i].imageData) await generateImage(i);
+    if(!scenes[i].imageData){
+      await generateImage(i);
+      if(!scenes[i].imageData) failed++;
+    }
   }
-  setStatus("Semua scene selesai. Sekarang klik CREATE MP4.");
+  if(failed>0){
+    setStatus(`Selesai dengan ${failed} scene GAGAL generate gambar. Cek pesan error di scene yang masih WAITING, lalu tap GENERATE IMAGE di scene itu satu-satu.`);
+  }else{
+    setStatus("Semua scene selesai. Sekarang klik CREATE MP4.");
+  }
 }
 
 async function createMp4(){
@@ -214,8 +224,6 @@ async function convertToMp4(webm){
     new Promise((_,rej)=>setTimeout(()=>rej(new Error(`Timeout: ${label} lebih dari ${ms/1000} detik. Cek koneksi internet.`)),ms))
   ]);
   const baseURL="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
-  // Browser menolak Worker langsung dari CDN luar (cross-origin).
-  // Solusinya: unduh dulu jadi blob lokal, baru dipakai sebagai Worker.
   const coreURL=await withTimeout(toBlobURL(`${baseURL}/ffmpeg-core.js`,"text/javascript"),90000,"download FFmpeg core");
   const wasmURL=await withTimeout(toBlobURL(`${baseURL}/ffmpeg-core.wasm`,"application/wasm"),90000,"download FFmpeg wasm");
   await withTimeout(ff.load({ coreURL, wasmURL }),90000,"memuat FFmpeg engine");
